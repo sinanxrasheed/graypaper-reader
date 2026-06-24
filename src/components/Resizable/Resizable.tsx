@@ -1,18 +1,22 @@
+import { useStateSyncedWithLocalStorage } from "../../hooks/useStateSyncecWthLocalStorage";
 import "./Resizable.css";
 import { type ReactNode, useCallback, useState } from "react";
 
 type ResizableProps = {
   left: ReactNode;
   right: ReactNode;
+  initialSplit?: number;
+  storageKey?: string;
 };
 
 const SPLIT_THRESHOLD = 99;
-const INITIAL_SPLIT = window.innerWidth <= 768 ? SPLIT_THRESHOLD : 70.0;
+const DEFAULT_INITIAL_SPLIT = window.innerWidth <= 768 ? SPLIT_THRESHOLD : 70.0;
 
-export function Resizable({ left, right }: ResizableProps) {
+export function Resizable({ left, right, initialSplit, storageKey = "resizable-split" }: ResizableProps) {
   const [isDragging, setDragging] = useState(false);
   const [wasDragged, setWasDragged] = useState(false);
-  const [split, setSplit] = useState(INITIAL_SPLIT);
+  const effectiveInitial = initialSplit ?? DEFAULT_INITIAL_SPLIT;
+  const [split, setSplit] = useStateSyncedWithLocalStorage(storageKey, effectiveInitial);
   const [lastSplit, setLastSplit] = useState(split === SPLIT_THRESHOLD ? 15.0 : split);
 
   const onStartDrag = useCallback(() => {
@@ -40,7 +44,7 @@ export function Resizable({ left, right }: ResizableProps) {
     setDragging(true);
     document.addEventListener("mousemove", onDrag);
     document.addEventListener("mouseup", stopDrag);
-  }, [split]);
+  }, [split, setSplit]);
 
   const toggleRight = useCallback(() => {
     if (wasDragged) {
@@ -52,7 +56,7 @@ export function Resizable({ left, right }: ResizableProps) {
     } else {
       setSplit(SPLIT_THRESHOLD);
     }
-  }, [wasDragged, split, lastSplit]);
+  }, [wasDragged, split, lastSplit, setSplit]);
 
   return (
     <div className={`resizable${isDragging ? " dragging" : ""}`}>

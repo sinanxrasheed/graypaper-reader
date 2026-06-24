@@ -1,3 +1,4 @@
+import { Button, Checkbox, Input } from "@fluffylabs/shared-ui";
 import "./RemoteSource.css";
 import { useCallback, useState } from "react";
 import { NEW_REMOTE_SOURCE_ID } from "../../NotesProvider/consts/remoteSources";
@@ -39,43 +40,55 @@ export function RemoteSource({ source, onChange }: RemoteSourceProps) {
     onChange(source, true);
   }, [source, onChange]);
 
-  const toggleEnabled = useCallback(() => {
-    if (!source) {
-      console.error("Toggling a non-existing remote source.");
-      return;
-    }
-    onChange({ ...source, isEnabled: !isEnabled });
-  }, [onChange, source, isEnabled]);
+  const toggleEnabled = useCallback(
+    (checked: boolean) => {
+      if (!source) {
+        console.error("Toggling a non-existing remote source.");
+        return;
+      }
+      onChange({ ...source, isEnabled: checked });
+    },
+    [onChange, source],
+  );
 
   if (isEditing) {
     return (
       <div className="remote-source">
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Source Name" />
+        <Input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Source Name" />
         <br />
-        <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Source URL" />
+        <Input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Source URL" />
         <br />
         <Versions isEditing={isEditing} versions={versions} onChange={setVersions} />
         <br />
-        <button disabled={!isFilled} onClick={handleEdit}>
+        <Button variant="tertiary" disabled={!isFilled} onClick={handleEdit}>
           ok
-        </button>
-        {id > NEW_REMOTE_SOURCE_ID ? <button onClick={handleRemove}>remove</button> : null}
+        </Button>
+        {id > NEW_REMOTE_SOURCE_ID ? (
+          <Button variant="tertiary" intent="destructive" onClick={handleRemove}>
+            remove
+          </Button>
+        ) : null}
       </div>
     );
   }
 
   return (
     <div className="remote-source">
-      <label>
-        <input type="checkbox" checked={isEnabled} onChange={toggleEnabled} />
+      <label style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+        <Checkbox checked={isEnabled} onCheckedChange={toggleEnabled} />
         <strong>{name}</strong>
       </label>
-      {id > 0 ? <a onClick={() => setEditing(true)}>&nbsp;✏︎</a> : null}
+      {id > 0 ? (
+        // biome-ignore lint/a11y/useKeyWithClickEvents: edit toggle is a click-only affordance
+        <a className="default-link" onClick={() => setEditing(true)}>
+          &nbsp;✏︎
+        </a>
+      ) : null}
       <br />
       URL:{" "}
       <em>
         {url}{" "}
-        <a href={url} target="_blank" rel="noreferrer">
+        <a className="default-link" href={url} target="_blank" rel="noreferrer noopener">
           &nbsp;🔗
         </a>
       </em>

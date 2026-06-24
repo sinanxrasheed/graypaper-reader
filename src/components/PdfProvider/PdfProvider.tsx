@@ -1,9 +1,10 @@
 import { jsPDF } from "jspdf";
 import * as pdfJs from "pdfjs-dist";
 import * as pdfJsViewer from "pdfjs-dist/web/pdf_viewer.mjs";
+import type { Dispatch, MutableRefObject, ReactNode, RefObject, SetStateAction } from "react";
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Dispatch, MutableRefObject, ReactNode, SetStateAction } from "react";
 import { subtractBorder } from "../../utils/subtractBorder";
+import { useTextLayerRendered } from "./hooks/useTextLayerRendered";
 
 const CMAP_URL = "node_modules/pdfjs-dist/cmaps/";
 const CMAP_PACKED = true;
@@ -30,38 +31,16 @@ export interface IPdfContext extends IPdfServices {
   theme: ITheme;
   setTheme: Dispatch<SetStateAction<ITheme>>;
   visiblePages: number[];
-  pageOffsets: MutableRefObject<DOMRect[]>;
-  downloadPdfWithTheme: () => void;
+  pageOffsets: RefObject<DOMRect[]>;
+  downloadPdfWithTheme: (filename: string, themeOverride?: ITheme) => void;
+  textLayerRenderedRef: RefObject<number[]>;
 }
 
 interface IPdfProviderProps {
   pdfUrl: string;
   children: ReactNode;
-}
-
-const THEME_LOCAL_STORAGE_KEY = "theme";
-
-function loadThemeSettingFromLocalStorage(): ITheme {
-  const localStorageValue = window.localStorage.getItem(THEME_LOCAL_STORAGE_KEY) ?? "false";
-
-  switch (localStorageValue.toLowerCase()) {
-    case "light":
-      return "light";
-    case "gray":
-      return "gray";
-    case "dark":
-      return "dark";
-    default:
-      return "dark";
-  }
-}
-
-function saveThemeSettingToLocalStorage(value: ITheme) {
-  try {
-    window.localStorage.setItem(THEME_LOCAL_STORAGE_KEY, value);
-  } catch (e) {
-    console.error(`Unable to save theme setting: ${e}`);
-  }
+  externalTheme?: ITheme;
+  onThemeChange?: Dispatch<SetStateAction<ITheme>>;
 }
 
 function isPartlyInViewport({ top, bottom }: DOMRect) {
@@ -116,6 +95,7 @@ async function renderPageWithTheme(page: pdfJs.PDFPageProxy, theme: ITheme, scal
     context.fillRect(0, 0, canvas.width, canvas.height);
 
     const renderContext = {
+      canvas: canvas,
       canvasContext: context,
       viewport: viewport,
     };
@@ -155,13 +135,16 @@ async function createPdfWithTheme(pdfDocument: pdfJs.PDFDocumentProxy, theme: IT
   return doc;
 }
 
-export function PdfProvider({ pdfUrl, children }: IPdfProviderProps) {
+export function PdfProvider({ pdfUrl, children, externalTheme, onThemeChange }: IPdfProviderProps) {
   const [services, setServices] = useState<IPdfServices>({});
   const [viewer, setViewer] = useState<pdfJsViewer.PDFViewer>();
   const [scale, setScale] = useState<number>(0);
-  const [theme, setTheme] = useState<ITheme>(loadThemeSettingFromLocalStorage());
+  const [internalTheme, setInternalTheme] = useState<ITheme>("dark");
+  const theme = externalTheme ?? internalTheme;
+  const setTheme = onThemeChange ?? setInternalTheme;
   const [visiblePages, setVisiblePages] = useState<number[]>([]);
   const pageOffsets = useRef([]);
+  const { textLayerRenderedRef } = useTextLayerRendered(services.eventBus);
 
   // Initial setup
   useEffect(() => {
@@ -207,10 +190,6 @@ export function PdfProvider({ pdfUrl, children }: IPdfProviderProps) {
     viewer,
   });
 
-  useEffect(() => {
-    saveThemeSettingToLocalStorage(theme);
-  }, [theme]);
-
   usePageOffsets({
     viewer,
     services,
@@ -218,12 +197,15 @@ export function PdfProvider({ pdfUrl, children }: IPdfProviderProps) {
     setVisiblePages,
   });
 
-  const downloadPdfWithTheme = useCallback(async () => {
-    if (services.pdfDocument) {
-      const doc = await createPdfWithTheme(services.pdfDocument, theme, PDF_RESOLUTION);
-      doc.save(`graypaper-${theme}-theme.pdf`);
-    }
-  }, [services.pdfDocument, theme]);
+  const downloadPdfWithTheme = useCallback(
+    async (filename: string, themeOverride?: ITheme) => {
+      if (services.pdfDocument) {
+        const doc = await createPdfWithTheme(services.pdfDocument, themeOverride ?? theme, PDF_RESOLUTION);
+        doc.save(filename);
+      }
+    },
+    [services.pdfDocument, theme],
+  );
 
   const context = useMemo(
     () => ({
@@ -236,8 +218,9 @@ export function PdfProvider({ pdfUrl, children }: IPdfProviderProps) {
       visiblePages,
       pageOffsets,
       downloadPdfWithTheme,
+      textLayerRenderedRef,
     }),
-    [theme, viewer, visiblePages, services, scale, downloadPdfWithTheme],
+    [theme, setTheme, viewer, visiblePages, services, scale, downloadPdfWithTheme, textLayerRenderedRef],
   );
 
   return <PdfContext.Provider value={context}>{children}</PdfContext.Provider>;

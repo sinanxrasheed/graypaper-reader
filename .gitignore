@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+.zed
 
 node_modules
 dist
@@ -13,7 +14,6 @@ dist-ssr
 public
 *.local
 
-graypaper-archive/*
 
 # Editor directories and files
 .vscode/*
@@ -26,3 +26,4 @@ graypaper-archive/*
 *.sln
 *.sw?
 messages.json
+tools/snapshot-tests/test-results/

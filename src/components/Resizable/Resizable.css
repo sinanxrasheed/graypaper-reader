@@ -1,11 +1,12 @@
 .resizable {
   position: relative;
-  height: 100vh;
+  height: calc(100svh - var(--header-height));
   width: 100vw;
   display: flex;
 }
 
-.resizable .left, .resizable .right {
+.resizable .left,
+.resizable .right {
   position: relative;
   height: 100%;
   transition: width 150ms;
@@ -22,21 +23,24 @@
 
 .resizable .right {
   width: calc(30% - 2px);
+  border-left: 1px solid light-dark(#fff, #3d3d3d);
 }
 
 .resizable .handle {
-  width: 6px;
+  width: 10px;
   cursor: col-resize;
   height: 100%;
-  background-color: #ddd;
+  border-right: 1px solid;
+  border-right-color: light-dark(#d4d4d4, #181818);
+  background-color: var(--color-sidebar);
 }
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .resizable .handle {
     width: 15px;
   }
 }
 .resizable .handle:hover {
-  background-color: #ccc;
+  background-color: light-dark(#d4d4d4, #181818);
 }
 
 .resizable .overlay {
@@ -53,4 +57,3 @@
   display: block;
   cursor: col-resize;
 }
-

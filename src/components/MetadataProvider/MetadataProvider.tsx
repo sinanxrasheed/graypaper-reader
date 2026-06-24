@@ -1,8 +1,9 @@
-import { type ReactNode, createContext, useEffect, useMemo, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { DOC_CONFIG } from "../../config/documentConfig";
 
-const METADATA_HOST = "";
+const METADATA_HOST = DOC_CONFIG.metadataHost;
 const METADATA_JSON = `${METADATA_HOST}/metadata.json`;
-export const LEGACY_READER_HOST = "https://old-graypaper.fluffylabs.dev";
+export const LEGACY_READER_HOST = DOC_CONFIG.legacyReaderHost;
 
 export interface IVersionInfo {
   hash: string;
@@ -13,6 +14,7 @@ export interface IVersionInfo {
 
 export interface IMetadata {
   latest: string;
+  nightly?: IVersionInfo;
   versions: {
     [key: string]: IVersionInfo;
   };
@@ -22,6 +24,7 @@ export interface IMetadataContext {
   metadata: IMetadata;
   urlGetters: {
     pdf: (version: string) => string;
+    md: (version: string) => string;
     synctex: (version: string) => string;
     texDirectory: (version: string) => string;
     legacyReaderRedirect: (hash: string) => string;
@@ -33,6 +36,14 @@ interface IMetadataProviderProps {
 }
 
 export const MetadataContext = createContext<IMetadataContext | null>(null);
+
+export const useMetadataContext = () => {
+  const context = useContext(MetadataContext);
+  if (!context) {
+    throw new Error("useMetadataContext must be used within a MetadataProvider");
+  }
+  return context;
+};
 
 export function MetadataProvider({ children }: IMetadataProviderProps) {
   const [metadata, setMetadata] = useState<IMetadata>();
@@ -49,23 +60,20 @@ export function MetadataProvider({ children }: IMetadataProviderProps) {
     fetchMetadata();
   }, []);
 
-  const context = useMemo<IMetadataContext | null>(
-    () =>
-      metadata
-        ? {
-            metadata,
-            urlGetters: {
-              pdf: (version) => `${METADATA_HOST}/graypaper-${version}.pdf`,
-              synctex: (version) => `${METADATA_HOST}/graypaper-${version}.synctex.json`,
-              texDirectory: (version) => `${METADATA_HOST}/tex-${version}`,
-              legacyReaderRedirect: (hash) => {
-                return `${LEGACY_READER_HOST}/${hash}`;
-              },
-            },
-          }
-        : null,
-    [metadata],
-  );
+  const context = useMemo<IMetadataContext | null>(() => {
+    if (!metadata) return null;
+
+    return {
+      metadata,
+      urlGetters: {
+        pdf: (version) => `${METADATA_HOST}/${DOC_CONFIG.pdfFilePrefix}-${version}.pdf`,
+        md: (version) => `${METADATA_HOST}/${DOC_CONFIG.pdfFilePrefix}-${version}.md`,
+        synctex: (version) => `${METADATA_HOST}/${DOC_CONFIG.pdfFilePrefix}-${version}.synctex.json`,
+        texDirectory: (version) => `${METADATA_HOST}/tex-${version}`,
+        legacyReaderRedirect: (hash) => `${LEGACY_READER_HOST}/${hash}`,
+      },
+    };
+  }, [metadata]);
 
   if (!context) {
     return null;

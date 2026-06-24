@@ -5,26 +5,30 @@ name: Node.js CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
-
+    branches: ["main"]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: 'true'
-    - name: Use Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 22
-        cache: "npm"
-    - run: npm ci
-    - run: npm run qa
-    - run: npm run build --if-present
-    - run: npm test
+      - uses: actions/checkout@v6
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: "npm"
+      - run: npm ci
+      - run: npm run qa
+      - run: npm run build --if-present
+      - name: Build publishable packages
+        run: |
+          npm run build --workspace=shared/links-metadata
+          npm run build --workspace=tools/links-check
+      - name: Dry-run pack
+        run: |
+          npm pack --dry-run --workspace=shared/links-metadata
+          npm pack --dry-run --workspace=tools/links-check
+      - run: npm test

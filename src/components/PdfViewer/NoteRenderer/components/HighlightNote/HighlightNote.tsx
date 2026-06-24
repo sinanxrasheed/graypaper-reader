@@ -2,7 +2,6 @@ import "./HighlightNote.css";
 import { Fragment, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { CodeSyncContext, type ICodeSyncContext } from "../../../../CodeSyncProvider/CodeSyncProvider";
 import { NoteContent } from "../../../../NoteContent/NoteContent";
-import { NoteLabels } from "../../../../NoteManager/components/NoteLabels";
 import type { IDecoratedNote } from "../../../../NotesProvider/types/DecoratedNote";
 import { Highlighter } from "../../../Highlighter/Highlighter";
 
@@ -35,7 +34,7 @@ export function HighlightNote({ notes, pageOffset, isInViewport, isPinnedByDefau
   );
 
   // delay hovering a bit
-  const setHoveredTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const setHoveredTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const setHoveredLater = useCallback((val: boolean) => {
     clearTimeout(setHoveredTimeout.current);
     if (val) {
@@ -104,12 +103,13 @@ export function HighlightNote({ notes, pageOffset, isInViewport, isPinnedByDefau
         onMouseEnter={handleNoteHoverOn}
         onMouseLeave={handleNoteHoverOff}
       >
-        <a className="close" onClick={handleNotePinnedToggle}>
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: pin toggle is a click-only affordance */}
+        <a className="close default-link" onClick={handleNotePinnedToggle}>
           {isDisplayed ? "📍" : "📌"}
         </a>
         {notes.map((note) => (
           <Fragment key={note.key}>
-            <NoteLabels note={note} />
+            {/*<NoteLabels note={note} />*/}
             {note.original.author}
             <NoteContent content={note.original.content} />
             <br />

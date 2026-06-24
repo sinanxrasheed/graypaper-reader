@@ -21,15 +21,17 @@ export function ZoomControls() {
 
   return (
     <div className="zoom-controls">
-      <button className="in" onClick={handleZoomInClick}>
+      <button className="in default-button" onClick={handleZoomInClick}>
         +
       </button>
-      <button onClick={handleZoomOutClick}>−</button>
+      <button className="default-button" onClick={handleZoomOutClick}>
+        −
+      </button>
     </div>
   );
 }
 
 function calcScale(current: number, change: number): string {
-  const scale = Number.parseInt(`${current * 100 + change * 100}`) / 100;
+  const scale = Number.parseInt(`${current * 100 + change * 100}`, 10) / 100;
   return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale)).toString();
 }

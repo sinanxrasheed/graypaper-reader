@@ -1,30 +1,41 @@
 import { type ISelectionParams, type ISynctexBlock, isSameBlock } from "@fluffylabs/links-metadata";
-import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { DOC_CONFIG } from "../../config/documentConfig";
 import { deserializeLegacyLocation } from "../../utils/deserializeLegacyLocation";
 import { type IMetadataContext, MetadataContext } from "../MetadataProvider/MetadataProvider";
+import { useGetLocationParamsToHash } from "./hooks/useGetLocationParamsToHash";
+import type { ILocationParams } from "./types";
+import {
+  BASE64_VALIDATION_REGEX,
+  SEGMENT_SEPARATOR,
+  SELECTION_DECOMPOSE_PATTERN,
+  SELECTION_SEGMENT_INDEX,
+  VERSION_SEGMENT_INDEX,
+} from "./utils/constants";
+import { extractSearchParams } from "./utils/extractSearchParams";
+import { locationParamsToHash } from "./utils/locationParamsToHash";
+import { resolveFullVersion as resolveFullVersionUtil } from "./utils/resolveFullVersion";
 
 export interface ILocationContext {
   locationParams: ILocationParams;
   setLocationParams: (newParams: ILocationParams) => void;
   synctexBlocksToSelectionParams: (blocks: ISynctexBlock[]) => ISelectionParams;
-}
-
-interface ILocationParams extends Partial<ISelectionParams> {
-  version: string;
+  getHashFromLocationParams: (params: ILocationParams) => string;
 }
 
 interface ILocationProviderProps {
   children: ReactNode;
 }
 
-const VERSION_SEGMENT_INDEX = 0;
-const SELECTION_SEGMENT_INDEX = 1;
-const SEGMENT_SEPARATOR = "/";
-const SELECTION_DECOMPOSE_PATTERN = /[0-9A-F]{6}/gi;
-const SHORT_COMMIT_HASH_LENGTH = 7; // as many as git uses for `git rev-parse --short`
-const BASE64_VALIDATION_REGEX = /^#[-A-Za-z0-9+/]*={0,3}$/;
-
 export const LocationContext = createContext<ILocationContext | null>(null);
+
+export const useLocationContext = () => {
+  const context = useContext(LocationContext);
+  if (!context) {
+    throw new Error("useLocationContext must be used within a LocationProvider");
+  }
+  return context;
+};
 
 export function LocationProvider({ children }: ILocationProviderProps) {
   const { metadata } = useContext(MetadataContext) as IMetadataContext;
@@ -33,6 +44,7 @@ export function LocationProvider({ children }: ILocationProviderProps) {
 
   useEffect(() => {
     if (
+      DOC_CONFIG.legacyReaderHost &&
       !window.location.hash.startsWith("#/") &&
       BASE64_VALIDATION_REGEX.test(window.location.hash) &&
       deserializeLegacyLocation(window.location.hash)
@@ -43,74 +55,104 @@ export function LocationProvider({ children }: ILocationProviderProps) {
 
   const handleSetLocationParams = useCallback(
     (newParams?: ILocationParams) => {
-      const version =
-        newParams?.version.substring(0, SHORT_COMMIT_HASH_LENGTH) ||
-        metadata.versions[metadata.latest]?.hash.substring(0, SHORT_COMMIT_HASH_LENGTH);
-      const versionName = newParams ? metadata.versions[newParams.version]?.name : undefined;
-
-      const stringifiedParams = [];
-
-      stringifiedParams[VERSION_SEGMENT_INDEX] = version;
-
-      if (newParams?.selectionStart && newParams?.selectionEnd) {
-        stringifiedParams[SELECTION_SEGMENT_INDEX] = [
-          encodePageNumberAndIndex(newParams.selectionStart.pageNumber, newParams.selectionStart.index),
-          encodePageNumberAndIndex(newParams.selectionEnd.pageNumber, newParams.selectionEnd.index),
-        ].join("");
-      }
-
-      const newHash = `${SEGMENT_SEPARATOR}${stringifiedParams.join(SEGMENT_SEPARATOR)}`;
-      window.location.hash = versionName ? `${newHash}?v=${versionName}` : newHash;
+      if (!newParams) return;
+      const hash = locationParamsToHash(newParams, metadata);
+      window.location.hash = hash;
     },
     [metadata],
   );
 
-  const handleHashChange = useCallback(() => {
-    const newHash = window.location.hash.substring(1);
+  const { getHashFromLocationParams } = useGetLocationParamsToHash();
 
-    if (!newHash || !newHash.startsWith(SEGMENT_SEPARATOR)) {
-      handleSetLocationParams();
+  const resolveFullVersion = useCallback(
+    (shortVersion: string): string | null => resolveFullVersionUtil(shortVersion, metadata),
+    [metadata],
+  );
+
+  const handleHashChange = useCallback(() => {
+    const { rest: newHash, search, section, split } = extractSearchParams(window.location.hash);
+
+    const resolvedSplit = split ? (resolveFullVersion(split) ?? undefined) : undefined;
+
+    if (!newHash.startsWith(SEGMENT_SEPARATOR)) {
+      const version = metadata.latest;
+      setLocationParams((params) => ({
+        ...params,
+        version,
+        search,
+        section,
+        split: resolvedSplit,
+      }));
+      // Redirect to the canonical URL, but keep ?search/?section so the second
+      // hashchange (triggered by the rewrite) doesn't wipe state before the
+      // Search input and Outline scroll have a chance to consume them.
+      const redirectHash = locationParamsToHash({ version, search, section, split: resolvedSplit }, metadata, {
+        includeSearchSection: true,
+      });
+      window.location.hash = redirectHash;
       return;
     }
 
     const rawParams = newHash.split(SEGMENT_SEPARATOR).slice(1);
+    const selectedVersion = rawParams[VERSION_SEGMENT_INDEX];
 
-    const fullVersion = Object.keys(metadata.versions).find((version) =>
-      version.startsWith(rawParams[VERSION_SEGMENT_INDEX]),
-    );
+    const fullVersion = resolveFullVersion(selectedVersion);
 
     if (!fullVersion) {
-      handleSetLocationParams();
+      const version = metadata.latest;
+      setLocationParams((params) => ({
+        ...params,
+        version,
+        search,
+        section,
+        split: resolvedSplit,
+      }));
+      const redirectHash = locationParamsToHash({ version, search, section, split: resolvedSplit }, metadata, {
+        includeSearchSection: true,
+      });
+      window.location.hash = redirectHash;
       return;
     }
 
-    const processedParams: ILocationParams = {
+    const newLocationParams: ILocationParams = {
       version: fullVersion,
+      search,
+      section,
+      split: resolvedSplit,
     };
 
     if (rawParams[SELECTION_SEGMENT_INDEX]) {
       const matchedHexSegments = [...rawParams[SELECTION_SEGMENT_INDEX].matchAll(SELECTION_DECOMPOSE_PATTERN)];
 
       if (matchedHexSegments.length === 2) {
-        processedParams.selectionStart = decodePageNumberAndIndex(matchedHexSegments[0][0]);
-        processedParams.selectionEnd = decodePageNumberAndIndex(matchedHexSegments[1][0]);
+        newLocationParams.selectionStart = decodePageNumberAndIndex(matchedHexSegments[0][0]);
+        newLocationParams.selectionEnd = decodePageNumberAndIndex(matchedHexSegments[1][0]);
       }
     }
 
     // Update location but only if it has REALLY changed.
     setLocationParams((params) => {
-      if (!isSameBlock(params?.selectionStart, processedParams.selectionStart)) {
-        return processedParams;
+      if (!isSameBlock(params?.selectionStart, newLocationParams.selectionStart)) {
+        return newLocationParams;
       }
-      if (!isSameBlock(params?.selectionEnd, processedParams.selectionEnd)) {
-        return processedParams;
+      if (!isSameBlock(params?.selectionEnd, newLocationParams.selectionEnd)) {
+        return newLocationParams;
       }
-      if (params?.version !== processedParams.version) {
-        return processedParams;
+      if (params?.version !== newLocationParams.version) {
+        return newLocationParams;
+      }
+      if (params?.search !== newLocationParams.search) {
+        return newLocationParams;
+      }
+      if (params?.section !== newLocationParams.section) {
+        return newLocationParams;
+      }
+      if (params?.split !== newLocationParams.split) {
+        return newLocationParams;
       }
       return params;
     });
-  }, [handleSetLocationParams, metadata]);
+  }, [metadata, resolveFullVersion]);
 
   const synctexBlocksToSelectionParams: ILocationContext["synctexBlocksToSelectionParams"] = useCallback((blocks) => {
     const blockIds = blocks.map((block) => ({ pageNumber: block.pageNumber, index: block.index }));
@@ -151,19 +193,15 @@ export function LocationProvider({ children }: ILocationProviderProps) {
       locationParams,
       setLocationParams: handleSetLocationParams,
       synctexBlocksToSelectionParams,
+      getHashFromLocationParams,
     };
-  }, [locationParams, handleSetLocationParams, synctexBlocksToSelectionParams]);
+  }, [locationParams, handleSetLocationParams, synctexBlocksToSelectionParams, getHashFromLocationParams]);
 
   if (!context) {
     return null;
   }
 
   return <LocationContext.Provider value={context}>{children}</LocationContext.Provider>;
-}
-
-function encodePageNumberAndIndex(pageNumber: number, index: number) {
-  const asHexByte = (num: number) => (num & 0xff).toString(16).padStart(2, "0");
-  return `${asHexByte(pageNumber)}${asHexByte(index)}${asHexByte(index >> 8)}`;
 }
 
 function decodePageNumberAndIndex(s: string) {

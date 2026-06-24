@@ -1,10 +1,17 @@
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
+:root {
+  font-family: Poppins, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  font-size: 12px;
+  font-size: 14px;
 
-  color-scheme: light dark;
   color: light-dark(#213547, rgba(200, 200, 200, 0.87));
   background-color: light-dark(#fff, #242424);
 
@@ -17,19 +24,19 @@
   height: 100%;
 }
 
-a {
+.default-link {
   font-weight: 500;
   color: light-dark(#59b7fe, #7eb6e0);
   text-decoration: inherit;
 }
-a:hover {
+.default-link:hover {
   color: light-dark(#81c5f9, #3875a3);
 }
 
 body {
   margin: 0;
-  min-width: 100vw;
-  min-height: 100vh;
+  min-width: 100svw;
+  min-height: 100svh;
   overflow: hidden;
 }
 
@@ -38,25 +45,28 @@ h1 {
   line-height: 1.1;
 }
 
-button {
+.default-button {
   border-radius: 8px;
   border: 1px solid transparent;
   padding: 0.6em 1.2em;
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: light-dark(#f9f9f9, #1a1a1a);
+  background-color: light-dark(#e7e7e7, #1a1a1a);
   cursor: pointer;
   transition: border-color 0.25s;
 }
-button:hover {
+.default-button:disabled {
+  opacity: 0.5;
+}
+.default-button:hover:not(:disabled) {
   border-color: #646cff;
 }
-button:focus,
-button:focus-visible {
+.default-button:focus,
+.default-button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
-button.toggled {
+.default-button.toggled {
   border-color: #fff874;
 }

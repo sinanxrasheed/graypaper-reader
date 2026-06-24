@@ -10,26 +10,26 @@
 .selection small {
   text-align: center;
   display: block;
+  background-color: light-dark(#eee, #111);
 }
 
 .selection blockquote {
   flex: 1;
-  font-family: ff7;
+  font-family: ff7, sans-serif;
   font-size: 1rem;
   height: auto;
   margin: 0.5rem 0 0;
   overflow: scroll;
-  padding-bottom: 2rem;
   padding: 1rem;
+  padding-bottom: 2rem;
   text-align: center;
-  background: #111;
+  background-color: light-dark(#eee, #111);
 }
 
 .selection small {
-  background: #111;
   box-sizing: border-box;
   display: block;
-  font-family: monospace;
+  font-family: Inconsolata, monospace;
   margin-bottom: 1rem;
   overflow: hidden;
   padding: 0.2rem 0.3rem 0;
@@ -37,13 +37,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   width: 100%;
-}
-
-@media (prefers-color-scheme: light) {
-  .selection blockquote,
-  .selection small {
-    background: #eee;
-  }
 }
 
 .selection .actions {
@@ -60,6 +53,10 @@
 }
 
 @keyframes fadeIn {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }

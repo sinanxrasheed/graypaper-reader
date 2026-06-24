@@ -1,6 +1,7 @@
 import "katex/dist/katex.css";
 import DOMPurify from "dompurify";
 import { useMemo } from "react";
+import { DOC_CONFIG } from "../../config/documentConfig";
 import { renderMathToString } from "../../utils/renderMathToString";
 
 export type NoteContentProps = {
@@ -21,7 +22,7 @@ export const NoteContent: React.FC<NoteContentProps> = ({ content }) => {
 function renderMath(content: string): string {
   try {
     return renderMathToString(content);
-  } catch (e) {
+  } catch (_e) {
     return content;
   }
 }
@@ -37,8 +38,8 @@ function renderLinks(content: string): string {
     // to support the same links multiple times we need to move forward in the content.
     const indexOf = haystack.indexOf(link);
     // convert reader links to local links
-    const localLink = link.replace("https://graypaper.fluffylabs.dev", "");
-    const linkData = `<a target="_blank" href="${localLink}">${shortenLink(localLink)}</a>`;
+    const localLink = link.replace(DOC_CONFIG.readerDomain, "");
+    const linkData = `<a className="default-link" target="_blank" href="${localLink}">${shortenLink(localLink)}</a>`;
     haystack = haystack.replace(link, linkData);
     // add that stuff already to the newcontent
     newContent += haystack.substring(0, indexOf + linkData.length);

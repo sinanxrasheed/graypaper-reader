@@ -1,4 +1,6 @@
+import { Button } from "@fluffylabs/shared-ui";
 import { useCallback, useState } from "react";
+import { DOC_CONFIG } from "../../config/documentConfig";
 import type { IRemoteSource } from "../NotesProvider/types/RemoteSource";
 import { RemoteSource } from "./components/RemoteSource";
 
@@ -19,7 +21,7 @@ export function RemoteSources({ remoteSources, onChange }: RemoteSourcesProps) {
   );
 
   return (
-    <>
+    <div className="text-sidebar-foreground">
       <h3>Sources of remote notes</h3>
       {remoteSources.map((x) => (
         <RemoteSource key={x.id} source={x} onChange={onChange} />
@@ -28,14 +30,18 @@ export function RemoteSources({ remoteSources, onChange }: RemoteSourcesProps) {
       {isAddingNew ? (
         <RemoteSource onChange={handleOnChange} />
       ) : (
-        <button onClick={() => setAddingNew(true)}>➕ new source</button>
+        <Button variant="tertiary" size="sm" onClick={() => setAddingNew(true)}>
+          ➕ new source
+        </Button>
       )}
+      <br />
+      <br />
       <hr />
       <em>
-        Disclaimer: the only source of the truth is the Gray Paper. The notes here are shared as-is and are not
-        guaranteed to be correct.
+        Disclaimer: the only source of the truth is {DOC_CONFIG.disclaimerSubject}. The notes here are shared as-is and
+        are not guaranteed to be correct.
       </em>
       <hr />
-    </>
+    </div>
   );
 }

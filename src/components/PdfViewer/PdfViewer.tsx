@@ -1,9 +1,9 @@
 import "pdfjs-dist/web/pdf_viewer.css";
 import "./PdfViewer.css";
 import * as pdfJsViewer from "pdfjs-dist/web/pdf_viewer.mjs";
-import { type WheelEventHandler, useCallback, useContext, useEffect, useState } from "react";
-import { PdfContext, themesOrder } from "../PdfProvider/PdfProvider";
+import { useCallback, useContext, useEffect, useState, type WheelEventHandler } from "react";
 import type { IPdfContext } from "../PdfProvider/PdfProvider";
+import { PdfContext, themesOrder } from "../PdfProvider/PdfProvider";
 import { type ISelectionContext, SelectionContext } from "../SelectionProvider/SelectionProvider";
 import { NoteRenderer } from "./NoteRenderer/NoteRenderer";
 import { SelectionRenderer } from "./SelectionRenderer/SelectionRenderer";
@@ -106,24 +106,28 @@ export function PdfViewer() {
     window.getSelection()?.empty();
   }, []);
 
-  if (!pdfDocument) return <div className="pdf-viewer-loading">Loading...</div>;
+  if (!pdfDocument)
+    return (
+      <div className="pdf-viewer-loading bg-inherit animate-fade-in" role="status" aria-live="polite" aria-busy="true">
+        Loading...
+      </div>
+    );
 
   return (
-    <>
-      <div
-        ref={handleRootRef}
-        className="pdf-viewer-root"
-        onMouseDown={removeSelection}
-        onMouseUp={handleViewerMouseUp}
-        onWheel={handleWheel}
-      >
-        {pagesLoaded ? (
-          <>
-            <NoteRenderer />
-            <SelectionRenderer />
-          </>
-        ) : null}
-      </div>
-    </>
+    <div
+      ref={handleRootRef}
+      className="pdf-viewer-root bg-inherit absolute"
+      data-pdf-ready={pagesLoaded || undefined}
+      onMouseDown={removeSelection}
+      onMouseUp={handleViewerMouseUp}
+      onWheel={handleWheel}
+    >
+      {pagesLoaded ? (
+        <>
+          <NoteRenderer />
+          <SelectionRenderer />
+        </>
+      ) : null}
+    </div>
   );
 }

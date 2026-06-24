@@ -1,11 +1,11 @@
 import type { ISynctexBlock, ISynctexBlockId } from "@fluffylabs/links-metadata";
 import {
+  createContext,
   type Dispatch,
   type MouseEventHandler,
   type MutableRefObject,
   type ReactNode,
   type SetStateAction,
-  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -28,15 +28,25 @@ export interface ISelectionContext {
   handleClearSelection: () => void;
 }
 
+type SelectionMode = "connected" | "readonly" | "isolated";
+
 interface ISelectionProviderProps {
   children: ReactNode;
+  /**
+   * - "connected" (default): reads and writes selection to URL
+   * - "readonly": reads selection from URL but doesn't write (e.g. split pane showing a different version)
+   * - "isolated": doesn't read from or write to URL (e.g. split pane showing the same version)
+   */
+  mode?: SelectionMode;
 }
 
 export const SelectionContext = createContext<ISelectionContext | null>(null);
 
 // todo: solve the problem of multi-page selections
 
-export function SelectionProvider({ children }: ISelectionProviderProps) {
+export function SelectionProvider({ children, mode = "connected" }: ISelectionProviderProps) {
+  const isolated = mode === "isolated";
+  const readOnly = mode !== "connected";
   const { locationParams, setLocationParams, synctexBlocksToSelectionParams } = useContext(
     LocationContext,
   ) as ILocationContext;
@@ -45,11 +55,15 @@ export function SelectionProvider({ children }: ISelectionProviderProps) {
   const lastScrolledTo = useRef<ISynctexBlockId | null>(null);
 
   const handleClearSelection = useCallback(() => {
+    if (readOnly) {
+      window.getSelection()?.empty();
+      return;
+    }
     const { selectionStart, selectionEnd, ...otherParams } = locationParams;
     setLocationParams(otherParams);
     window.getSelection()?.empty();
     lastScrolledTo.current = null;
-  }, [setLocationParams, locationParams]);
+  }, [readOnly, setLocationParams, locationParams]);
 
   // reset scroll position when version changes.
   const previousVersion = usePrevious(locationParams.version);
@@ -60,9 +74,11 @@ export function SelectionProvider({ children }: ISelectionProviderProps) {
   }, [previousVersion, locationParams]);
 
   const handleViewerMouseUp = useCallback(() => {
+    if (readOnly) return;
+
     const selection = document.getSelection();
 
-    if (!selection || !selection.anchorNode) {
+    if (!selection?.anchorNode) {
       return;
     }
 
@@ -83,7 +99,7 @@ export function SelectionProvider({ children }: ISelectionProviderProps) {
     }
 
     const pageRect = subtractBorder(pageElement.getBoundingClientRect(), pageElement);
-    const pageNumber = Number.parseInt(pageElement.dataset.pageNumber || "");
+    const pageNumber = Number.parseInt(pageElement.dataset.pageNumber || "", 10);
     const synctexBlocks = [];
 
     for (const rect of selection.getRangeAt(0).getClientRects()) {
@@ -110,14 +126,28 @@ export function SelectionProvider({ children }: ISelectionProviderProps) {
     // auto-scrolling that would happen otherwise.
     lastScrolledTo.current = newLocation.selectionStart;
     setLocationParams(newLocation);
-  }, [setLocationParams, locationParams, getSynctexBlockAtLocation, synctexBlocksToSelectionParams]);
+  }, [readOnly, setLocationParams, locationParams, getSynctexBlockAtLocation, synctexBlocksToSelectionParams]);
+
+  // Stabilize selection references so they only change when actual values change,
+  // not when unrelated locationParams fields (like split) change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally comparing by value not reference
+  const stableSelectionStart = useMemo(
+    () => locationParams.selectionStart,
+    [locationParams.selectionStart?.pageNumber, locationParams.selectionStart?.index],
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally comparing by value not reference
+  const stableSelectionEnd = useMemo(
+    () => locationParams.selectionEnd,
+    [locationParams.selectionEnd?.pageNumber, locationParams.selectionEnd?.index],
+  );
 
   const selectedBlocks: ISynctexBlock[] = useMemo(() => {
-    if (locationParams.selectionStart && locationParams.selectionEnd) {
-      return getSynctexBlockRange(locationParams.selectionStart, locationParams.selectionEnd);
+    if (isolated) return [];
+    if (stableSelectionStart && stableSelectionEnd) {
+      return getSynctexBlockRange(stableSelectionStart, stableSelectionEnd);
     }
     return [];
-  }, [getSynctexBlockRange, locationParams]);
+  }, [isolated, getSynctexBlockRange, stableSelectionStart, stableSelectionEnd]);
 
   const pageNumber: number | null = useMemo(() => {
     return selectedBlocks[0]?.pageNumber || null;

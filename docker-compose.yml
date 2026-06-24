@@ -1,0 +1,44 @@
+services:
+  snapshot-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.snapshot-tests
+      target: test-runner
+    volumes:
+      - ./tools/snapshot-tests/tests:/app/tools/snapshot-tests/tests
+      - ./tools/snapshot-tests/test-results:/app/tools/snapshot-tests/test-results
+      - ./tools/snapshot-tests/playwright-report:/app/tools/snapshot-tests/playwright-report
+    environment:
+      - PLAYWRIGHT_START_SERVER=true
+      - PLAYWRIGHT_PORT=5173
+      - PLAYWRIGHT_HOST=localhost
+      - CI=true
+      - DISPLAY=:99
+    working_dir: /app/tools/snapshot-tests
+    command: ["npm", "run", "test"]
+    networks:
+      - playwright-network
+
+  snapshot-tests-update:
+    build:
+      context: .
+      dockerfile: Dockerfile.snapshot-tests
+      target: test-runner
+    volumes:
+      - ./tools/snapshot-tests/tests:/app/tools/snapshot-tests/tests
+      - ./tools/snapshot-tests/test-results:/app/tools/snapshot-tests/test-results
+      - ./tools/snapshot-tests/playwright-report:/app/tools/snapshot-tests/playwright-report
+    environment:
+      - PLAYWRIGHT_START_SERVER=true
+      - PLAYWRIGHT_PORT=5173
+      - PLAYWRIGHT_HOST=localhost
+      - CI=true
+      - DISPLAY=:99
+    working_dir: /app/tools/snapshot-tests
+    command: "npm run test:update"
+    networks:
+      - playwright-network
+
+networks:
+  playwright-network:
+    driver: bridge

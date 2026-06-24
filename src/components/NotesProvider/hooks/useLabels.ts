@@ -1,7 +1,8 @@
 import type { UnPrefixedLabel } from "@fluffylabs/links-metadata";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useState } from "react";
+import { useLatestCallback } from "../../../hooks/useLatestCallback";
 import { LABEL_LOCAL, LABEL_REMOTE } from "../consts/labels";
-import { type IDecoratedNote, NoteSource, isDecoratedNote } from "../types/DecoratedNote";
+import { type IDecoratedNote, isDecoratedNote, NoteSource } from "../types/DecoratedNote";
 import type { IStorageNote } from "../types/StorageNote";
 import { loadFromLocalStorage, saveToLocalStorage } from "../utils/labelsLocalStorage";
 
@@ -109,20 +110,27 @@ export function getFilteredNotes<T extends IStorageNote | IDecoratedNote>(
   });
 }
 
+const initialEmptyArray: unknown[] = [];
+
 /**
  * Maintains a list list of all labels (across all nodes) and allow to activate/deactivate them
  * to filter given list of all decorated notes.
  */
-export function useLabels(
-  allNotes: IDecoratedNote[],
-): [IDecoratedNote[], ILabelTreeNode[], (label: ILabelTreeNode) => void] {
+export function useLabels(allNotes: IDecoratedNote[]): {
+  filteredNotes: IDecoratedNote[];
+  labels: ILabelTreeNode[];
+  toggleLabel: (label: ILabelTreeNode) => void;
+  isVisibleByActiveLabelsLatest: RefObject<(note: IDecoratedNote | IStorageNote) => boolean>;
+} {
   const [storageLabels, setStorageLabels] = useState<IStorageLabel[]>([]);
-  const [labels, setLabels] = useState<ILabelTreeNode[]>([]);
+  const [labels, setLabels] = useState<ILabelTreeNode[]>(initialEmptyArray as ILabelTreeNode[]);
 
   // load and save storage labels to Local Storage
   useEffect(() => {
-    setStorageLabels(loadFromLocalStorage());
+    const storageLabels = loadFromLocalStorage();
+    setStorageLabels(storageLabels);
   }, []);
+
   useEffect(() => {
     if (storageLabels.length) {
       saveToLocalStorage(storageLabels);
@@ -186,20 +194,26 @@ export function useLabels(
     for (const label of storageLabels) {
       activity.set(label.label, label.isActive);
     }
+
     return activity;
   }, [storageLabels]);
 
   // Re-build the labels tree on changes in notes or storage labels.
   useEffect(() => {
     const uniqueLabels = new Set<PrefixedLabel>();
+
     allNotes.map((note) => {
       note.original.labels.map((label) => {
         uniqueLabels.add(prefixLabel(note.source, label));
       });
     });
 
-    setLabels(
-      buildLabelTree(
+    setLabels((prev) => {
+      if (prev.length === 0 && uniqueLabels.size === 0) {
+        return prev;
+      }
+
+      return buildLabelTree(
         Array.from(uniqueLabels.values()).map((prefixedLabel) => {
           const activeByDefault = !prefixedLabel.startsWith(LABEL_REMOTE);
           const activeInStorage = storageActivity.get(prefixedLabel);
@@ -210,16 +224,28 @@ export function useLabels(
             isActive,
           };
         }),
-      ),
-    );
+      );
+    });
   }, [allNotes, storageActivity]);
+
+  const activeLabels = useMemo(() => {
+    return labels.filter((label) => label.isActive).map((label) => label.prefixedLabel);
+  }, [labels]);
 
   // filter notes when labels are changing
   const filteredNotes = useMemo(() => {
-    const activeLabels = labels.filter((label) => label.isActive).map((label) => label.prefixedLabel);
     // filter out notes
     return getFilteredNotes(allNotes, activeLabels);
-  }, [allNotes, labels]);
+  }, [allNotes, activeLabels]);
 
-  return [filteredNotes, labels, toggleLabel];
+  const isVisibleByActiveLabelsLatest = useLatestCallback((note: IStorageNote | IDecoratedNote) => {
+    if (labels.length === 0) {
+      return true;
+    }
+
+    const filteringResult = getFilteredNotes([note], activeLabels);
+    return filteringResult.length > 0;
+  });
+
+  return { filteredNotes, labels, toggleLabel, isVisibleByActiveLabelsLatest };
 }

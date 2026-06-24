@@ -1,20 +1,41 @@
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@fluffylabs/shared-ui";
+import { ChevronDown, Columns2 } from "lucide-react";
+import { useCallback, useContext, useMemo, useRef } from "react";
 import { Tooltip } from "react-tooltip";
-import "./Version.css";
-import { type ChangeEventHandler, useCallback, useContext } from "react";
 import { CodeSyncContext, type ICodeSyncContext } from "../CodeSyncProvider/CodeSyncProvider";
 import { type ILocationContext, LocationContext } from "../LocationProvider/LocationProvider";
 import { type IMetadataContext, type IVersionInfo, MetadataContext } from "../MetadataProvider/MetadataProvider";
+import { useSplitScreenContext } from "../SplitScreenProvider/SplitScreenProvider";
 
 export function Version() {
   const { metadata } = useContext(MetadataContext) as IMetadataContext;
   const { locationParams, setLocationParams } = useContext(LocationContext) as ILocationContext;
   const { migrateSelection } = useContext(CodeSyncContext) as ICodeSyncContext;
-  const versions = Object.values(metadata.versions).filter(({ legacy }) => !legacy);
-  const currentVersionHash = metadata.versions[locationParams.version].hash;
+  const { activateCompare, isSplitActive, rightVersion, setRightVersion } = useSplitScreenContext();
 
-  const handleChange = useCallback<ChangeEventHandler<HTMLSelectElement>>(
-    (e) => {
-      const newVersion = e.target.value;
+  const versions = [
+    ...Object.values(metadata.versions).filter(({ legacy }) => !legacy),
+    ...(metadata.nightly ? [metadata.nightly] : []),
+  ];
+  const currentVersion =
+    metadata.nightly && locationParams.version === metadata.nightly.hash
+      ? metadata.nightly
+      : (metadata.versions[locationParams.version] ?? metadata.versions[metadata.latest]);
+  const currentVersionHash = currentVersion.hash;
+  const dropdownContentRef = useRef<HTMLDivElement>(null);
+  const currentItemRef = useRef<HTMLDivElement>(null);
+
+  const handleVersionSelect = useCallback(
+    (newVersion: string) => {
       const { selectionStart, selectionEnd, version } = locationParams;
       if (!selectionStart || !selectionEnd) {
         setLocationParams({ version: newVersion });
@@ -32,52 +53,117 @@ export function Version() {
     [setLocationParams, locationParams, migrateSelection],
   );
 
+  const handleCompareWith = useCallback(
+    (targetVersion: string) => {
+      if (isSplitActive) {
+        setRightVersion(targetVersion);
+      } else {
+        activateCompare(targetVersion);
+      }
+    },
+    [activateCompare, isSplitActive, setRightVersion],
+  );
+
+  const getCurrentVersionLabel = () => getVersionLabel(currentVersion, metadata.latest, metadata.nightly?.hash);
+
+  const compareVersions = useMemo(() => {
+    const excluded = new Set([currentVersionHash, rightVersion].filter(Boolean));
+    const isExcluded = (v: IVersionInfo) => excluded.has(v.hash);
+
+    const nightlyVersion = metadata.nightly;
+    const latestVersion = metadata.versions[metadata.latest];
+
+    const prioritized = [nightlyVersion, latestVersion]
+      .filter((v): v is IVersionInfo => v != null && !isExcluded(v))
+      .filter((v, i, arr) => arr.findIndex((x) => x.hash === v.hash) === i);
+
+    const recentVersions = Object.values(metadata.versions)
+      .filter((v) => !v.legacy && v.hash !== metadata.latest && v.hash !== nightlyVersion?.hash && !isExcluded(v))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 2);
+
+    return [...prioritized, ...recentVersions];
+  }, [metadata, currentVersionHash, rightVersion]);
+
+  const handleOpenChange = (open: boolean) => {
+    if (open) {
+      requestAnimationFrame(() => {
+        if (currentItemRef.current && dropdownContentRef.current) {
+          currentItemRef.current.scrollIntoView({ block: "center", behavior: "auto" });
+        }
+      });
+    }
+  };
+
   return (
-    <div className="version">
+    <div className="flex items-center justify-end gap-2 mx-4">
       {currentVersionHash !== metadata.latest && (
         <span
           data-tooltip-id="version"
-          data-tooltip-content="The current version is not the latest."
+          data-tooltip-content="The current version is not the latest"
           data-tooltip-place="top"
-          className="icon"
+          className="text-amber-500 text-2xl mt-[-2px]"
         >
           ⚠
         </span>
       )}
-      <select onChange={handleChange} value={locationParams.version}>
-        {versions.map((v) => (
-          <Option key={v.hash} id={v.hash} version={v} latest={metadata.latest} />
-        ))}
-      </select>
-      <a
-        data-tooltip-id="version"
-        data-tooltip-content="Open Gray Paper github commit."
-        data-tooltip-place="top"
-        target="_blank"
-        href={`https://github.com/gavofyork/graypaper/commit/${currentVersionHash}`}
-        rel="noreferrer"
-      >
-        Github
-      </a>
-      <Tooltip id="version" />
+      <DropdownMenu onOpenChange={handleOpenChange}>
+        <DropdownMenuTrigger asChild>
+          <Button variant="tertiary" forcedColorScheme="dark" className="flex-1 justify-between h-[32px]">
+            <span className="px-2">{getCurrentVersionLabel()}</span>
+            <ChevronDown className="ml-2 h-5 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent ref={dropdownContentRef} className="max-h-[60vh] overflow-y-auto" forcedColorScheme="dark">
+          <DropdownMenuRadioGroup value={currentVersionHash} onValueChange={handleVersionSelect}>
+            {versions.map((version) => (
+              <DropdownMenuRadioItem
+                value={version.hash}
+                key={version.hash}
+                ref={version.hash === currentVersionHash ? currentItemRef : null}
+              >
+                <VersionOption version={version} latest={metadata.latest} nightly={metadata.nightly?.hash} />
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <div className="px-2 py-1 text-xs opacity-60">Compare with...</div>
+          {compareVersions.map((version) => (
+            <DropdownMenuItem
+              key={`compare-${version.hash}`}
+              className="flex gap-2 items-center"
+              onSelect={() => handleCompareWith(version.hash)}
+            >
+              <Columns2 className="h-3 w-3 opacity-60" />
+              <span>{getVersionLabel(version, metadata.latest, metadata.nightly?.hash)}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Tooltip
+        id="version"
+        style={{ backgroundColor: "oklch(76.9% 0.188 70.08)", zIndex: 1, color: "black", fontSize: "10px" }}
+      />
     </div>
   );
 }
 
-type OptionProps = { id: string; version: IVersionInfo; latest: string };
-function Option({ id, version, latest }: OptionProps) {
+type VersionOptionProps = { version: IVersionInfo; latest: string; nightly?: string };
+function VersionOption({ version, latest, nightly }: VersionOptionProps) {
+  return <span className="w-full">{getVersionLabel(version, latest, nightly)}</span>;
+}
+
+function getVersionLabel(version: IVersionInfo, latest: string, nightly?: string) {
   const date = new Date(version.date);
-  let latestText = "Latest";
-  let versionText = "v";
-  if (version.name) {
-    latestText += `: ${version.name}`;
-    versionText += `: ${version.name}`;
+  const isNightly = version.hash === nightly;
+  const isLatest = version.hash === latest;
+
+  let label = isNightly ? "Nightly" : isLatest ? "Latest" : "v";
+  if (version.name && !isNightly) {
+    label += `: ${version.name}`;
   }
-  return (
-    <option value={id}>
-      {version.hash === latest ? latestText : versionText} {shortHash(version.hash)} ({date.toLocaleDateString()})
-    </option>
-  );
+
+  return `${label} ${shortHash(version.hash)} (${date.toLocaleDateString()})`;
 }
 
 function shortHash(h: string) {

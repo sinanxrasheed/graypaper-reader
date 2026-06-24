@@ -1,97 +1,210 @@
-import { useCallback, useContext, useEffect, useState } from "react";
+import { memo, useCallback, useContext, useEffect, useRef } from "react";
 import "./NoteManager.css";
-import { validateMath } from "../../utils/validateMath";
-import { LabelsFilter } from "../LabelsFilter/LabelsFilter";
+import type { ISynctexBlockId } from "@fluffylabs/links-metadata";
+import { Alert, Button, cn } from "@fluffylabs/shared-ui";
+import { twMerge } from "tailwind-merge";
+import { useLatestCallback } from "../../hooks/useLatestCallback";
 import { type ILocationContext, LocationContext } from "../LocationProvider/LocationProvider";
-import { type INotesContext, NotesContext } from "../NotesProvider/NotesProvider";
-import { LABEL_LOCAL } from "../NotesProvider/consts/labels";
+import type { IDecoratedNote } from "../NotesProvider/types/DecoratedNote";
 import type { IStorageNote } from "../NotesProvider/types/StorageNote";
+import { areSelectionsEqual } from "../NotesProvider/utils/areSelectionsEqual";
 import { type ISelectionContext, SelectionContext } from "../SelectionProvider/SelectionProvider";
-import { Note } from "./components/Note";
-import { NotesActions } from "./components/NotesActions";
+import { InactiveNoteSkeleton } from "./components/InactiveNoteSkeleton";
+import { NewNote } from "./components/NewNote";
+import { NotesList } from "./components/NotesList";
+import { useFilteredNoteAlert } from "./hooks/useFilteredNoteAlert";
+import { useNoteManagerNotes } from "./useNoteManagerNotes";
 
 const DEFAULT_AUTHOR = "";
 
-export function NoteManager() {
+export function NoteManager({ className }: { className?: string }) {
   return (
-    <div className="notes-wrapper">
+    <div className={twMerge("notes-wrapper gap-4", className)}>
       <Notes />
-      <NotesActions />
     </div>
   );
 }
 
+const MemoizedNotesList = memo(NotesList);
+
 function Notes() {
-  const [noteContent, setNoteContent] = useState("");
-  const [noteContentError, setNoteContentError] = useState("");
-  const { locationParams } = useContext(LocationContext) as ILocationContext;
-  const { notesReady, notes, labels, handleAddNote, handleDeleteNote, handleUpdateNote, handleToggleLabel } =
-    useContext(NotesContext) as INotesContext;
+  const { locationParams, setLocationParams } = useContext(LocationContext) as ILocationContext;
+  const {
+    notesManagerNotes: notes,
+    activeNotes,
+    addNote,
+    sectionTitlesLoaded,
+    notesReady,
+    deleteNote,
+    updateNote,
+  } = useNoteManagerNotes();
   const { selectedBlocks, pageNumber, handleClearSelection } = useContext(SelectionContext) as ISelectionContext;
+  const keepShowingNewNote = useRef<{ selectionEnd: ISynctexBlockId; selectionStart: ISynctexBlockId }>(undefined);
+  const latestHandleClearSelection = useLatestCallback(handleClearSelection);
+  const { noteAlertVisibilityState, triggerFilteredNoteAlert, closeNoteAlert } = useFilteredNoteAlert();
 
-  const handleAddNoteClick = useCallback(() => {
-    if (
-      selectedBlocks.length === 0 ||
-      pageNumber === null ||
-      !locationParams.selectionStart ||
-      !locationParams.selectionEnd
-    ) {
-      throw new Error("Attempted saving a note without selection.");
-    }
+  const memoizedHandleDeleteNote = useCallback(
+    (note: IDecoratedNote) => {
+      deleteNote(note);
+      latestHandleClearSelection.current();
+    },
+    [latestHandleClearSelection, deleteNote],
+  );
 
-    setNoteContentError("");
+  const memoizedHandleUpdateNote = useCallback(
+    (note: IDecoratedNote, newNote: IStorageNote) => {
+      // NOTE(optimistic): intentional mutation for immediate UI feedback; be aware this bypasses immutability
+      note.original.content = newNote.content;
+      note.original.labels = newNote.labels;
+      const { isVisible } = updateNote(note, newNote);
+      if (!isVisible) {
+        handleClearSelection();
+        triggerFilteredNoteAlert("visibleForUpdated");
+      }
+    },
+    [updateNote, handleClearSelection, triggerFilteredNoteAlert],
+  );
 
-    const mathValidationError = validateMath(noteContent);
-
-    if (mathValidationError) {
-      setNoteContentError(mathValidationError);
-      return;
-    }
-
-    const newNote: IStorageNote = {
-      noteVersion: 3,
-      content: noteContent,
-      date: Date.now(),
-      author: DEFAULT_AUTHOR,
-      selectionStart: locationParams.selectionStart,
-      selectionEnd: locationParams.selectionEnd,
-      version: locationParams.version,
-      labels: [LABEL_LOCAL],
-    };
-
-    handleAddNote(newNote);
+  const handleNewNoteCancel = useCallback(() => {
     handleClearSelection();
-  }, [noteContent, pageNumber, selectedBlocks, handleAddNote, handleClearSelection, locationParams]);
+  }, [handleClearSelection]);
+
+  const handleAddNoteClick = useCallback(
+    ({ noteContent, labels }: { noteContent: string; labels: string[] }) => {
+      if (
+        selectedBlocks.length === 0 ||
+        pageNumber === null ||
+        !locationParams.selectionStart ||
+        !locationParams.selectionEnd
+      ) {
+        throw new Error("Attempted saving a note without selection.");
+      }
+
+      const newNote: IStorageNote = {
+        noteVersion: 3,
+        content: noteContent,
+        date: Date.now(),
+        author: DEFAULT_AUTHOR,
+        selectionStart: locationParams.selectionStart,
+        selectionEnd: locationParams.selectionEnd,
+        version: locationParams.version,
+        labels,
+      };
+
+      const { isVisible } = addNote(newNote);
+
+      if (!isVisible) {
+        triggerFilteredNoteAlert("visibleForCreated");
+        handleClearSelection();
+      }
+
+      keepShowingNewNote.current = {
+        selectionStart: locationParams.selectionStart,
+        selectionEnd: locationParams.selectionEnd,
+      };
+    },
+    [pageNumber, selectedBlocks, locationParams, addNote, handleClearSelection, triggerFilteredNoteAlert],
+  );
+
+  const locationRef = useRef({ locationParams, setLocationParams });
+  locationRef.current = { locationParams, setLocationParams };
+
+  const memoizedHandleSelectNote = useCallback(
+    (note: IDecoratedNote, { type = "currentVersion" }: { type: "currentVersion" | "originalVersion" | "close" }) => {
+      let selectionStart: ISynctexBlockId | undefined = note.current.selectionStart;
+      let selectionEnd: ISynctexBlockId | undefined = note.current.selectionEnd;
+      let version: string | undefined = locationRef.current.locationParams.version;
+
+      if (type === "originalVersion") {
+        selectionStart = note.original.selectionStart;
+        selectionEnd = note.original.selectionEnd;
+        version = note.original.version;
+      }
+
+      if (type === "close") {
+        selectionStart = undefined;
+        selectionEnd = undefined;
+      }
+
+      locationRef.current.setLocationParams({
+        selectionStart,
+        selectionEnd,
+        version: version,
+      });
+    },
+    [],
+  );
+
+  const isActiveNotes = notes.some((note) => activeNotes.has(note.noteObject));
+
+  const readyAndLoaded = notesReady && sectionTitlesLoaded;
 
   useEffect(() => {
-    if (selectedBlocks.length === 0) {
-      setNoteContent("");
-      setNoteContentError("");
+    if (readyAndLoaded) {
+      keepShowingNewNote.current = undefined;
     }
-  }, [selectedBlocks]);
+  }, [readyAndLoaded]);
 
   return (
-    <div className="note-manager" style={{ opacity: notesReady ? 1.0 : 0.3 }}>
-      <div className="new-note">
-        <textarea
-          disabled={selectedBlocks.length === 0}
-          className={noteContentError ? "error" : ""}
-          autoFocus
-          value={noteContent}
-          onChange={(ev) => setNoteContent(ev.currentTarget.value)}
-          placeholder="Add a note to the selected fragment. Math typesetting is supported! Use standard delimiters such as $...$, \[...\] or \begin{equation}...\end{equation}."
-        />
+    <>
+      {noteAlertVisibilityState !== "hidden" && (
+        <Alert intent="warning">
+          <Alert.Title>
+            {noteAlertVisibilityState === "visibleForUpdated"
+              ? "Note hidden after update"
+              : "Note hidden by label filter"}
+          </Alert.Title>
+          <div className="flex gap-4">
+            <Alert.Text>
+              {noteAlertVisibilityState === "visibleForUpdated"
+                ? "Updated note doesn't match active labels."
+                : "Created note doesn't match active labels."}
+            </Alert.Text>
+            <Button variant="secondary" intent="warning" size="sm" className="self-end" onClick={closeNoteAlert}>
+              Close
+            </Button>
+          </div>
+        </Alert>
+      )}
+      <div className={cn("note-manager flex flex-col gap-2.5", !readyAndLoaded && "opacity-30 pointer-events-none")}>
+        {locationParams.selectionEnd &&
+          locationParams.selectionStart &&
+          pageNumber !== null &&
+          selectedBlocks.length > 0 &&
+          !isActiveNotes &&
+          (readyAndLoaded || areSelectionsEqual(locationParams, keepShowingNewNote.current)) && (
+            <NewNote
+              selectionStart={locationParams.selectionStart}
+              selectionEnd={locationParams.selectionEnd}
+              version={locationParams.version}
+              onCancel={handleNewNoteCancel}
+              onSave={handleAddNoteClick}
+            />
+          )}
 
-        {noteContentError ? <div className="validation-message">{noteContentError}</div> : null}
-        <button disabled={noteContent.length < 1} onClick={handleAddNoteClick}>
-          Add
-        </button>
+        {!readyAndLoaded && notes.length === 0 && (
+          <>
+            <InactiveNoteSkeleton />
+            <InactiveNoteSkeleton />
+            <InactiveNoteSkeleton />
+            <InactiveNoteSkeleton />
+          </>
+        )}
+
+        {readyAndLoaded && notes.length === 0 && (
+          <div className="no-notes text-sidebar-foreground">No notes available</div>
+        )}
+
+        {notes.length > 0 && (
+          <MemoizedNotesList
+            activeNotes={activeNotes}
+            notes={notes}
+            onEditNote={memoizedHandleUpdateNote}
+            onDeleteNote={memoizedHandleDeleteNote}
+            onSelectNote={memoizedHandleSelectNote}
+          />
+        )}
       </div>
-
-      <LabelsFilter labels={labels} onToggleLabel={handleToggleLabel} />
-      {notes.map((note) => (
-        <Note key={note.key} note={note} onEditNote={handleUpdateNote} onDeleteNote={handleDeleteNote} />
-      ))}
-    </div>
+    </>
   );
 }

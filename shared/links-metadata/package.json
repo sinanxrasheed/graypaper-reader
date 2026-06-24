@@ -1,6 +1,11 @@
 {
   "name": "@fluffylabs/links-metadata",
-  "version": "1.3.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FluffyLabs/graypaper-reader.git",
+    "directory": "shared/links-metadata"
+  },
+  "version": "1.4.0",
   "scripts": {
     "build": "tsc",
     "update-main": "sed -i s#index\\.ts#dist/index.js# ./package.json",
@@ -11,13 +16,16 @@
     "lint": "biome lint --write; biome check --write"
   },
   "main": "index.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "author": "Fluffy Labs",
   "license": "MPL-2.0",
   "description": "Migrate graypaper reader notes between versions.",
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "@fluffylabs/types": "^1.0.0"
+    "@biomejs/biome": "^2.5.1",
+    "@tsconfig/node20": "^20.1.9",
+    "@types/node": "^26.0.0"
   },
   "dependencies": {
     "fastest-levenshtein": "^1.0.16"
